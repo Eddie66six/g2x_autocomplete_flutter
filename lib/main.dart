@@ -60,8 +60,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
           .contains(text.toLowerCase())).toList();
       loading = false;
     });
-    if(text == null || text == "")
-      return null;
     return lst.map((e) => {"text": e.nome, "id": e.id}).toList();
   }
 
@@ -271,6 +269,8 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
   Future<Null> _onRefresh(String text) async {
     if(text == null || text == ""){
       _listItens = [];
+      _entryLoading?.remove();
+      _entryLoading = null;
       isLoading = false;
       setState(() {});  
       return;
