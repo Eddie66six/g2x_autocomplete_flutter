@@ -135,6 +135,8 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
   @override
   void dispose() {
     _removeEntry();
+    _entryLoading?.remove();
+    _entryLoading = null;
     _timer.cancel();
     _timer = null;
     _key = null;
