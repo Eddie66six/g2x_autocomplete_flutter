@@ -40,6 +40,7 @@ class AutoComplete {
 class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   var lstDb = <AutoComplete>[];
   var lst = <AutoComplete>[];
+  var loading = false;
 
 
   OverlayEntry entry;
@@ -52,6 +53,18 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     }
     super.initState();
   }
+
+  Future<List<Map>> _onRefresh(String text) async{
+    await Future.delayed(Duration(seconds: 1), () {
+      lst = lstDb.where((element) => element.nome.toLowerCase()
+          .contains(text.toLowerCase())).toList();
+      loading = false;
+    });
+    if(text == null || text == "")
+      return null;
+    return lst.map((e) => {"text": e.nome, "id": e.id}).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,14 +81,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
               onSelected: (selected){
                 print(selected);
               },
-              onChanged: (String text){
-                lst = lstDb.where((element) => element.nome.toLowerCase()
-                  .contains(text.toLowerCase())).toList();
-                if(lst.length > 0){
-                  setState(() {});
-                }
-              },
-              listItens: lst.map((e) => {"text": e.nome, "id": e.id}).toList(),
+              onRefresh: _onRefresh,
               hintText: "Digite um nome para criar ou para buscar",
             ),
           ),
@@ -99,16 +105,15 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
 }
 
 class G2xAutocomplete extends StatefulWidget {
-  final Function(String) onChanged;
   final Function(dynamic) onSelected;
   final String fieldTextName;
-  final List<Map> listItens;
   final String hintText;
+  final Future<List<Map>> Function(String) onRefresh;
 
   G2xAutocomplete({
-    Key key, @required this.onChanged, @required this.onSelected,
-    this.listItens, this.fieldTextName = "text",
-    this.hintText = ""
+    Key key, @required this.onSelected,
+    this.fieldTextName = "text",
+    this.hintText = "", @required this.onRefresh
   }) : super(key: key);
   @override
   _G2xAutocompleteState createState() => _G2xAutocompleteState();
@@ -116,9 +121,11 @@ class G2xAutocomplete extends StatefulWidget {
 
 class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderStateMixin {
   OverlayEntry _entry;
+  OverlayEntry _entryLoading;
   Timer _timer;
   var _key = GlobalKey();
   var _tc = TextEditingController();
+  var _listItens = List<Map>();
 
   @override
   void initState() {
@@ -135,6 +142,26 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
     super.dispose();
   }
 
+  _buildOverlayEntryLoading() {
+    RenderBox box = _key.currentContext.findRenderObject();
+    Offset position = box.localToGlobal(Offset.zero);
+    return OverlayEntry(builder: (BuildContext context) {
+      return Positioned(
+        top: 50 + position.dy,
+        left: box.size.width/2-10,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.all(2),
+            color: Colors.white,
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator()
+          )
+        ),
+      );
+    });
+  }
+
    _buildOverlayEntry(Function(dynamic) onChange) {
     var _c = AnimationController(vsync: this, duration: Duration(milliseconds: 500));
     var _c1 = AnimationController(vsync: this, duration: Duration(milliseconds: 500));
@@ -148,11 +175,11 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
         left: position.dx,
         child: Material(
           child: Container(
-            height: 34.0 * widget.listItens.length,
+            height: 34.0 * _listItens.length,
             width: box.size.width,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: List.generate( widget.listItens.length, (index) {
+              children: List.generate( _listItens.length, (index) {
                 return SlideTransition(
                   position: Tween<Offset>(
                     begin:  Offset(0, index * -1.0),
@@ -167,7 +194,7 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
                   ).animate(_c1),
                     child: GestureDetector(
                       onTap: (){
-                        onChange(widget.listItens[index]);
+                        onChange(_listItens[index]);
                         setState(() {});
                       },
                       child: Container(
@@ -176,7 +203,7 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
                         padding: const EdgeInsets.all(8.0),
                         margin: const EdgeInsets.symmetric(vertical: 1),
                         child: Text(
-                          widget.listItens[index][widget.fieldTextName]
+                          _listItens[index][widget.fieldTextName]
                         ),
                       ),
                     ),
@@ -197,7 +224,7 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
   }
 
   _removeEntry(){
-    widget.listItens.clear();
+    _listItens.clear();
     if(_entry != null){
       _entry.remove();
       _entry = null;
@@ -216,9 +243,9 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
       key: _key,
       controller: _tc,
       onChanged: (value){
-        widget.listItens.clear();
+        _listItens.clear();
         _startTimeToSearch(() {
-          widget.onChanged(value);
+          _onRefresh(value);
         });
       },
       decoration: InputDecoration(
@@ -238,15 +265,41 @@ class _G2xAutocompleteState extends State<G2xAutocomplete> with TickerProviderSt
     );
   }
 
+  var isLoading = false;
+  Future<Null> _onRefresh(String text) async {
+    if(text == null || text == ""){
+      _listItens = [];
+      isLoading = false;
+      setState(() {});  
+      return;
+    }
+    isLoading = true;
+    setState(() {});
+    return await widget.onRefresh(text).then((value) {
+      _listItens = value ?? [];
+      isLoading = false;
+      setState(() {});
+      return null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if(widget.listItens.length > 0){
-        _entry = _buildOverlayEntry(onChangeItem);
-        _navigatorKey.currentState.overlay.insert(_entry);
+      if(isLoading){
+        _entryLoading = _buildOverlayEntryLoading();
+        _navigatorKey.currentState.overlay.insert(_entryLoading);
       }
       else{
-        _removeEntry();
+        _entryLoading?.remove();
+        _entryLoading = null;
+        if(_listItens.length > 0){
+          _entry = _buildOverlayEntry(onChangeItem);
+          _navigatorKey.currentState.overlay.insert(_entry);
+        }
+        else{
+          _removeEntry();
+        }
       }
     });
     return Material(
